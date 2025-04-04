@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { browser } from "$app/environment";
+    import 'leaflet/dist/leaflet.css';
+    import { onMount } from "svelte";
+    import { createMap, loadParams, saveParams } from "$lib/map.svelte";
 
-    // TODO: Add option to save targets
     // TODO: Add other shell types
-    // TODO: Add map
 
     // Taken from https://arma-mortar.com/
     const RINGS = [
@@ -29,62 +29,43 @@
         }
     ];
 
-    const params = browser ? JSON.parse(localStorage.getItem('mortar-calculator-params') ?? '{}') : {}
-
-    let mortarX: number | undefined = $state(params.mortarX);
-    let mortarY: number | undefined = $state(params.mortarY);
-    let mortarXOffset: number | undefined = $state(params.mortarXOffset);
-    let mortarYOffset: number | undefined = $state(params.mortarYOffset);
-    let mortarElevation: number | undefined = $state(params.mortarElevation);
-
-    let targetX: number | undefined = $state(params.targetX);
-    let targetY: number | undefined = $state(params.targetY);
-    let targetXOffset: number | undefined = $state(params.targetXOffset);
-    let targetYOffset: number | undefined = $state(params.targetYOffset);
-    let targetElevation: number | undefined = $state(params.targetElevation);
+    const params = loadParams();
 
     function onBeforeUnload() {
-        localStorage.setItem('mortar-calculator-params', JSON.stringify({
-            mortarX, mortarY, mortarXOffset, mortarYOffset, mortarElevation,
-            targetX, targetY, targetXOffset, targetYOffset, targetElevation
-        }));
+        saveParams(params);
     }
 
-    function clearTarget() {
-        targetX = undefined;
-        targetY = undefined;
-        targetXOffset = undefined;
-        targetYOffset = undefined;
-        targetElevation = undefined;
-    }
-
-    const isValid = $derived(mortarX != undefined && mortarY != undefined && mortarXOffset != undefined && mortarYOffset != undefined && mortarElevation != undefined
-        && targetX != undefined && targetY != undefined && targetXOffset != undefined && targetYOffset != undefined && targetElevation != undefined);
+    const isValid = $derived(params.mortarX != undefined && params.mortarY != undefined && params.mortarElevation != undefined
+        && params.targetX != undefined && params.targetY != undefined && params.targetElevation != undefined);
     
     const [distance, bearing] = $derived.by(() => {
-        const deltaX =  (100 * targetX! + targetXOffset!) - (100 * mortarX! + mortarXOffset!);
-        const deltaY = (100 * targetY! + targetYOffset!) - (100 * mortarY! + mortarYOffset!);
+        const deltaX =  params.targetX! - params.mortarX!;
+        const deltaY =  params.targetY! - params.mortarY!;
         return [Math.sqrt(deltaX * deltaX + deltaY * deltaY), (3200 / Math.PI * Math.atan2(deltaX, deltaY) + 6400) % 6400];
     });
-    const [ring, elevation] = $derived.by(() => {
-        for (let ring = 0; ring <= 4; ring++) {
-            const table = RINGS[ring].table;
-            if (table.at(-1)![0] - 100 >= distance) {
-                for (let i = 1; i < table.length; i++) {
-                    const previous = table[i - 1];
-                    const current = table[i];
+    const [ring, dispersion, elevation] = $derived.by(() => {
+        for (let ringNumber = 0; ringNumber < RINGS.length; ringNumber++) {
+            const ring = RINGS[ringNumber];
+            const buffer = ringNumber === RINGS.length - 1 ? 0 : 100;
+            if (ring.table[ring.table.length - 1][0] - buffer >= distance) {
+                for (let i = 1; i < ring.table.length; i++) {
+                    const previous = ring.table[i - 1];
+                    const current = ring.table[i];
                     if (previous[0] <= distance && current[0] >= distance) {
                         const factor = (distance - previous[0]) / (current[0] - previous[0]);
                         const baseElev = previous[1] + (current[1] - previous[1]) * factor;
                         const dElev = previous[3] + (current[3] - previous[3]) * factor;
-                        console.log(baseElev, dElev, factor);
-                        return [ring, baseElev - (targetElevation! - mortarElevation!) / 100 * dElev];
+                        return [ringNumber, ring.dispersion, baseElev - (params.targetElevation! - params.mortarElevation!) / 100 * dElev];
                     }
                 }
             }
         }
-        return [undefined, undefined];
-    })
+        return [undefined, undefined, undefined];
+    });
+
+    onMount(() => {
+        createMap('map', params, () => dispersion);
+    });
 </script>
 
 <svelte:window onbeforeunload={onBeforeUnload} />
@@ -92,79 +73,70 @@
     <title>Mortar Calculator</title> 
 </svelte:head>
 
-<main>
-    <div class="input-row gap-large">
-        <div>
-            <h2>MORTAR</h2>
-            <div class="input-row">
-                <label>
-                    X coordinate
-                    <input type="number" bind:value={mortarX} min="0" max="999">
-                </label>
-                <label>
-                    Y coordinate
-                    <input type="number" bind:value={mortarY} min="0" max="999">
-                </label>
+<div class="sidebar">
+    <div class="panel">
+        <h2>MORTAR</h2>
+        <div class="input-row">
+            <div class="label">
+                X coordinate
+                <span class="value">{params.mortarX?.toFixed(0)}</span>
             </div>
-            <div class="input-row">
-                <label>
-                    Offset right
-                    <input type="number" bind:value={mortarXOffset} min="0" max="100">
-                </label>
-                <label>
-                    Offset up
-                    <input type="number" bind:value={mortarYOffset} min="0" max="100">
-                </label>
+            <div class="label">
+                Y coordinate
+                <span class="value">{params.mortarY?.toFixed(0)}</span>
             </div>
-            <label>
-                Elevation
-                <input type="number" bind:value={mortarElevation} min="0" max="1000">
-            </label>
         </div>
-        <div>
-            <h2>TARGET</h2>
-            <div class="input-row">
-                <label>
-                    X coordinate
-                    <input type="number" bind:value={targetX} min="0" max="999">
-                </label>
-                <label>
-                    Y coordinate
-                    <input type="number" bind:value={targetY} min="0" max="999">
-                </label>
-            </div>
-            <div class="input-row">
-                <label>
-                    Offset right
-                    <input type="number" bind:value={targetXOffset}>
-                </label>
-                <label>
-                    Offset up
-                    <input type="number" bind:value={targetYOffset}>
-                </label>
-            </div>
-            <label>
-                Elevation
-                <input type="number" bind:value={targetElevation} min="0" max="1000">
-            </label>
-            <button onclick={clearTarget}>CLEAR TARGET</button>
+        <div class="label">
+            Elevation
+            <span class="value">{params.mortarElevation}</span>
         </div>
     </div>
-    <div class="output">
+    <div class="panel">
+        <h2>TARGET</h2>
+        <div class="input-row">
+            <div class="label">
+                X coordinate
+                <span class="value">{params.targetX?.toFixed(0)}</span>
+            </div>
+            <div class="label">
+                Y coordinate
+                <span class="value">{params.targetY?.toFixed(0)}</span>
+            </div>
+        </div>
+        <div class="label">
+            Elevation
+            <span class="value">{params.targetElevation}</span>
+        </div>
+    </div>
+    <div class="panel output">
         {#if isValid}
             Distance: {distance.toFixed(1)} m<br>
-            Ring: {ring == undefined ? "[OUT OF RANGE]" : ring}<br>
-            Elevation: {elevation == undefined ? "[OUT OF RANGE]" : `${elevation.toFixed(0)} mil`}<br>
+            Ring: {ring == undefined ? "-" : ring}<br>
+            Dispersion: {dispersion == undefined ? "-" : `${dispersion} m`}<br>
+            Elevation: {elevation == undefined ? "-" : `${elevation.toFixed(0)} mil`}<br>
             Bearing: {bearing.toFixed(0)} mil<br>
         {/if}
     </div>
-</main>
+</div>
+<div id="map" class="map"></div>
 
 <style>
-    main {
+    :global(html, body) {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+    }
+    :global(body) {
+        display: flex;
         font-family: sans-serif;
-        width: fit-content;
-        margin: 0 auto;
+    }
+
+    .sidebar {
+        width: 290px;
+        margin: 0 10px;
+    }
+    .panel {
+        margin-bottom: 30px;
     }
 
     h2 {
@@ -175,28 +147,22 @@
         flex-direction: row;
         column-gap: 10px;
     }
-    .input-row.gap-large {
-        column-gap: 30px;
-    }
-    label {
+    .label {
         display: flex;
         flex-direction: column;
-    }
-    input {
-        font-size: 2rem;
-        width: 100px
-    }
-    label, button {
         margin: 5px 0;
         font-size: 1.2rem;
     }
-    button {
-        margin: 8px 0;
-        font-size: 1.25rem;
+    .value {
+        font-size: 2rem;
+        width: 100px
     }
 
     .output {
         font-size: 2rem;
-        margin-top: 30px;
+    }
+
+    .map {
+        flex-grow: 1;
     }
 </style>
