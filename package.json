@@ -21,6 +21,7 @@
 		"vite": "^6.0.0"
 	},
 	"dependencies": {
+		"@sveltejs/adapter-static": "^3.0.8",
 		"@types/leaflet": "^1.9.17",
 		"leaflet": "^1.9.4"
 	}
