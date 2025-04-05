@@ -1,4 +1,4 @@
-import { Map, ImageOverlay, CRS, Circle, CircleMarker, Control, DomEvent, DomUtil, LatLng, Marker, Icon, GridLayer } from 'leaflet';
+import { Map, ImageOverlay, CRS, Circle, Control, DomEvent, DomUtil, LatLng, Marker, Icon } from 'leaflet';
 
 // TODO: Support multiple maps
 
@@ -85,17 +85,6 @@ export function createMap(elementId: string, params: Params, getDispersion: () =
     });
 
     new ImageOverlay('/maps/serhiivka.png', [[0, 0], [10240, 10240]]).addTo(map);
-
-    const DebugCoords = GridLayer.extend({
-        createTile: function(coords: any) {
-            console.log(coords);
-            var tile = document.createElement('div');
-            tile.innerHTML = [coords.x, coords.y, coords.z].join(', ');
-            tile.style.outline = '1px solid red';
-            return tile;
-        }
-    });
-    new DebugCoords().addTo(map);
 
     const mortarLatLng = new LatLng(params.mortarY ?? 0, params.mortarX ?? 0);
     const mortarMarker = new Marker(mortarLatLng, {
