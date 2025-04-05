@@ -1,19 +1,27 @@
-import { Map, ImageOverlay, CRS, Marker, Circle, CircleMarker, Control, DomEvent, DomUtil, type LatLngExpression, LatLng } from 'leaflet';
+import { Map, ImageOverlay, CRS, Circle, CircleMarker, Control, DomEvent, DomUtil, LatLng, Marker, Icon, GridLayer } from 'leaflet';
 
 // TODO: Support multiple maps
 
-const SimpleButtonControl = Control.extend({
+const ActionButtonControl = Control.extend({
+    options: {
+        icon: '',
+        title: '',
+        action: '',
+        position: 'topleft',
+    },
+
     onAdd() {
         const container = DomUtil.create('div', 'leaflet-bar');
 
-        (this as any)._button = this._createButton('M', 'Set mortar location', container, (this as any)._onClick);
+        (this as any)._isActive = false;
+        (this as any)._button = this._createButton(this.options.icon, this.options.title, container, this._onClick);
 
         return container;
     },
 
-    _createButton(html: string, title: string, container: HTMLElement, fn: () => void) {
+    _createButton(icon: string, title: string, container: HTMLElement, fn: () => void) {
         const link = DomUtil.create('a', undefined, container);
-        link.innerHTML = html;
+        link.innerHTML = `<img src="${icon}" width="24" height="24" style="margin: 3px;">`;
         link.href = '#';
         link.title = title;
 
@@ -26,6 +34,26 @@ const SimpleButtonControl = Control.extend({
         DomEvent.on(link, 'click', (this as any)._refocusOnMap, this);
 
         return link;
+    },
+
+    _onClick() {
+        if ((this as any)._isActive) {
+            this.setAction(null);
+        } else {
+            this.setAction(this.options.action);
+        }
+    },
+
+    setAction(newAction: string | null) {
+    },
+
+    updateActiveAction(action: string | null) {
+        (this as any)._isActive = action === this.options.action;
+        if ((this as any)._isActive) {
+            (this as any)._button.style.backgroundColor = 'lightblue';
+        } else {
+            (this as any)._button.style.backgroundColor = null;
+        }
     }
 });
 
@@ -58,57 +86,83 @@ export function createMap(elementId: string, params: Params, getDispersion: () =
 
     new ImageOverlay('/maps/serhiivka.png', [[0, 0], [10240, 10240]]).addTo(map);
 
-    let setMortar = false;
+    const DebugCoords = GridLayer.extend({
+        createTile: function(coords: any) {
+            console.log(coords);
+            var tile = document.createElement('div');
+            tile.innerHTML = [coords.x, coords.y, coords.z].join(', ');
+            tile.style.outline = '1px solid red';
+            return tile;
+        }
+    });
+    new DebugCoords().addTo(map);
 
     const mortarLatLng = new LatLng(params.mortarY ?? 0, params.mortarX ?? 0);
-    const mortarMarker = new Circle(mortarLatLng, {
-        radius: 10,
-        color: 'blue',
-    }).addTo(map);
-    const mortarMarkerCenter = new CircleMarker(mortarLatLng, {
-        radius: 4,
-        color: 'blue',
-        stroke: false,
-        fillOpacity: 1,
+    const mortarMarker = new Marker(mortarLatLng, {
+        icon: new Icon({ iconUrl: '/icons/mortar.png', iconSize: [24, 24] })
     }).addTo(map);
 
     const targetLatLng = new LatLng(params.targetY ?? 0, params.targetX ?? 0);
-    const targetMarker = new Circle(targetLatLng, {
+    const targetMarker = new Marker(targetLatLng, {
+        icon: new Icon({ iconUrl: '/icons/shell.png', iconSize: [24, 24] })
+    }).addTo(map);
+    const targetDispersionMarker = new Circle(targetLatLng, {
         radius: 0,
         color: 'red',
     }).addTo(map);
-    const targetMarkerCenter = new CircleMarker(targetLatLng, {
-        radius: 4,
-        color: 'red',
-        stroke: false,
-        fillOpacity: 1,
-    }).addTo(map);
 
     $effect(() => {
-        targetMarker.setRadius(getDispersion() ?? 0);
+        targetDispersionMarker.setRadius(getDispersion() ?? 0);
     });
 
-    const SetMortar = SimpleButtonControl.extend({
-        _onClick() {
-            setMortar = true;
+    const actionButtons = [
+        new ActionButtonControl({
+            icon: '/icons/mortar.png',
+            title: 'Set mortar location',
+            action: 'mortar',
+        } as any),
+        new ActionButtonControl({
+            icon: '/icons/marker.png',            
+            title: 'Add marker',
+            action: 'marker',
+        } as any)
+    ];
+
+    let action: string | null = null;
+
+    function setAction(newAction: string | null) {
+        console.log('set action ', newAction)
+        action = newAction;
+        for (const actionButton of actionButtons) {
+            actionButton.updateActiveAction(action);
         }
-    });
-    new SetMortar({
-        position: 'topleft'
-    }).addTo(map);
+    }
+
+    for (const actionButton of actionButtons) {
+        actionButton.setAction = setAction;
+        actionButton.addTo(map);
+    }
 
     map.on('click', event => {
-        if (setMortar) {
+        if (action === 'marker') {
+            const marker = new Marker(event.latlng, {
+                icon: new Icon({ iconUrl: '/icons/marker.png', iconSize: [24, 24] }),
+                draggable: true,
+            }).addTo(map);
+
+            // TODO: Add controls to measure bearing and distance
+
+            setAction(null);
+        } else if (action === 'mortar') {
             mortarMarker.setLatLng(event.latlng);
-            mortarMarkerCenter.setLatLng(event.latlng);
             params.mortarX = event.latlng.lng;
             params.mortarY = event.latlng.lat;
             params.mortarElevation = 0; // TODO: Read from heightmap
 
-            setMortar = false;
+            setAction(null);
         } else {
             targetMarker.setLatLng(event.latlng);
-            targetMarkerCenter.setLatLng(event.latlng);
+            targetDispersionMarker.setLatLng(event.latlng);
             params.targetX = event.latlng.lng;
             params.targetY = event.latlng.lat;
             params.targetElevation = 0; // TODO: Read from heightmap

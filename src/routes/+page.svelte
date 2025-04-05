@@ -1,7 +1,7 @@
 <script lang="ts">
     import 'leaflet/dist/leaflet.css';
     import { onMount } from "svelte";
-    import { createMap, loadParams, saveParams } from "$lib/map.svelte";
+    import { loadParams, saveParams, createMap } from "$lib/map.svelte";
 
     // TODO: Add other shell types
 
@@ -145,7 +145,7 @@
     .input-row {
         display: flex;
         flex-direction: row;
-        column-gap: 10px;
+        column-gap: 20px;
     }
     .label {
         display: flex;
